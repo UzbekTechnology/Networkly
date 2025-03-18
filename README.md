@@ -4,7 +4,7 @@
 Proof Of Concept Network based Mincraft Hacked Client
 
 It's Unfinished!. 
-- To get constant updates needs to implement UpdateEntityPositionAndRotation packet
+- ~To get constant updates needs to implement UpdateEntityPositionAndRotation/SetPlayerPositionAndRotationPacket packet~ Done ✅
 - Player/Entity List dont cleanups automaticly 
 
 
