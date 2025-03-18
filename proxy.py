@@ -6,9 +6,6 @@ import win32con
 import win32api
 from enum import IntEnum
 
-import math, time, threading, win32gui, win32con, win32api
-
-# Получаем размеры экрана
 screen_width = win32api.GetSystemMetrics(win32con.SM_CXSCREEN)
 screen_height = win32api.GetSystemMetrics(win32con.SM_CYSCREEN)
 
@@ -17,14 +14,27 @@ player_position = (0.0, 0.0, 0.0)
 player_camera = (0.0, 0.0)
 base_fov = 90
 player_fov = base_fov + 30
+
+state_lock = threading.Lock()
 entities_lock = threading.Lock()
 
+
+def wnd_proc(hwnd, msg, wparam, lparam):
+    if msg == win32con.WM_TIMER:
+        draw_entities(hwnd)
+        return 0
+    elif msg == win32con.WM_DESTROY:
+        ctypes.windll.user32.KillTimer(hwnd, 1)
+        win32gui.PostQuitMessage(0)
+        return 0
+    else:
+        return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
 
 def create_fullscreen_window():
     class_name = "Window"
     wnd_class = win32gui.WNDCLASS()
     wnd_class.style = win32con.CS_HREDRAW | win32con.CS_VREDRAW
-    wnd_class.lpfnWndProc = win32gui.DefWindowProc
+    wnd_class.lpfnWndProc = wnd_proc
     wnd_class.hInstance = win32api.GetModuleHandle()
     wnd_class.hCursor = win32gui.LoadCursor(0, win32con.IDC_ARROW)
     wnd_class.hbrBackground = win32con.COLOR_WINDOW
@@ -78,6 +88,11 @@ def draw_entities(hwnd):
         win32gui.FillRect(memdc, (0, 0, screen_width, screen_height),
                           win32gui.CreateSolidBrush(win32api.RGB(0, 0, 0)))
         global active_entities, player_position, player_camera, player_fov
+
+        with state_lock:
+            current_position = player_position
+            current_camera = player_camera
+            current_fov = player_fov
         with entities_lock:
             ents = [e for e in active_entities.values() if e.etype == 147]
         red_brush = win32gui.CreateSolidBrush(win32api.RGB(185, 113, 255))
@@ -101,12 +116,6 @@ def draw_entities(hwnd):
         win32gui.ReleaseDC(0, hdc)
     except:
         pass
-
-
-def drawing_loop(hwnd):
-    while True:
-        draw_entities(hwnd)
-        time.sleep(0.016)
 
 
 def _decode(fmt, data, offset=0):
@@ -235,7 +244,6 @@ class SetCompressionPacket(Packet):
     def log(self):
         print(f"[+] SetCompression: порог = {self.threshold}")
 
-
 class SpawnEntityPacket(Packet):
     packet_id = 0x01
 
@@ -278,7 +286,6 @@ class SpawnEntityPacket(Packet):
         print(
             f"    Data: {self.data_field}, Скорость: ({self.vx}, {self.vy}, {self.vz})")
 
-
 class RemoveEntitiesPacket(Packet):
     packet_id = 0x47
 
@@ -298,10 +305,8 @@ class RemoveEntitiesPacket(Packet):
     def log(self):
         print(f"[+] RemoveEntities: IDs: {self.ids}")
 
-
 class SetPlayerPositionPacket(Packet):
-    packet_id = 0x1C  # Идентификатор пакета
-
+    packet_id = 0x1C
     def __init__(self, x: float, feet_y: float, z: float, flags: int):
         self.x = x
         self.feet_y = feet_y
@@ -326,6 +331,35 @@ class SetPlayerPositionPacket(Packet):
         print(
             f"    On Ground: {on_ground}, Pushing Against Wall: {pushing_against_wall}")
 
+class SetPlayerPositionAndRotationPacket(Packet):
+    packet_id = 0x1D
+
+    def __init__(self, x: float, feet_y: float, z: float, yaw: float, pitch: float, flags: int):
+        self.x = x
+        self.feet_y = feet_y
+        self.z = z
+        self.yaw = yaw
+        self.pitch = pitch
+        self.flags = flags
+
+    @classmethod
+    def decode(cls, payload: bytes) -> 'SetPlayerPositionAndRotationPacket':
+        offset = 0
+        x, offset = DataType.Double.decode(payload, offset)
+        feet_y, offset = DataType.Double.decode(payload, offset)
+        z, offset = DataType.Double.decode(payload, offset)
+        yaw, offset = DataType.Float.decode(payload, offset)
+        pitch, offset = DataType.Float.decode(payload, offset)
+        flags, offset = DataType.Byte.decode(payload, offset)
+        return cls(x, feet_y, z, yaw, pitch, flags)
+
+    def log(self):
+        on_ground = bool(self.flags & 0x01)
+        pushing_against_wall = bool(self.flags & 0x02)
+        print(
+            f"[+] SetPlayerPositionAndRotation: X = {self.x}, FeetY = {self.feet_y}, Z = {self.z}, Yaw = {self.yaw}, Pitch = {self.pitch}"
+        )
+        print(f"    On Ground: {on_ground}, Pushing Against Wall: {pushing_against_wall}")
 
 class UpdateEntityPositionPacket(Packet):
     packet_id = 0x2F
@@ -345,7 +379,6 @@ class UpdateEntityPositionPacket(Packet):
         dy, offset = DataType.Short.decode(payload, offset)
         dz, offset = DataType.Short.decode(payload, offset)
         on_ground, offset = DataType.Byte.decode(payload, offset)
-        # Преобразуем дельты: делим на 4096, чтобы получить смещение в блоках
         dx = dx / 4096.0
         dy = dy / 4096.0
         dz = dz / 4096.0
@@ -357,6 +390,40 @@ class UpdateEntityPositionPacket(Packet):
             f"[+] UpdateEntityPosition: ID:{self.eid} Δx:{self.dx}, Δy:{self.dy}, Δz:{self.dz}, OnGround:{self.on_ground}"
         )
 
+class UpdateEntityPositionAndRotationPacket(Packet):
+    packet_id = 0x30
+
+    def __init__(self, eid, dx, dy, dz, yaw, pitch, on_ground: bool):
+        self.eid = eid
+        self.dx = dx
+        self.dy = dy
+        self.dz = dz
+        self.yaw = yaw
+        self.pitch = pitch
+        self.on_ground = on_ground
+
+    @classmethod
+    def decode(cls, payload: bytes) -> 'UpdateEntityPositionAndRotationPacket':
+        offset = 0
+        eid, offset = DataType.VarInt.decode(payload, offset)
+        dx, offset = DataType.Short.decode(payload, offset)
+        dy, offset = DataType.Short.decode(payload, offset)
+        dz, offset = DataType.Short.decode(payload, offset)
+        yaw, offset = DataType.UnsignedByte.decode(payload, offset)
+        pitch, offset = DataType.UnsignedByte.decode(payload, offset)
+        on_ground, offset = DataType.Byte.decode(payload, offset)
+
+        dx = dx / 4096.0
+        dy = dy / 4096.0
+        dz = dz / 4096.0
+
+        yaw = yaw * 360 / 256
+        pitch = pitch * 360 / 256
+        on_ground = bool(on_ground)
+        return cls(eid, dx, dy, dz, yaw, pitch, on_ground)
+
+    def log(self):
+        print(f"[+] UpdateEntityPositionAndRotation: ID:{self.eid} Δx:{self.dx}, Δy:{self.dy}, Δz:{self.dz}, Yaw:{self.yaw}, Pitch:{self.pitch}, OnGround:{self.on_ground}")
 
 class SetPlayerRotationPacket(Packet):
     packet_id = 0x1E
@@ -393,7 +460,9 @@ class PacketFactory:
         SpawnEntityPacket.packet_id: SpawnEntityPacket.decode,
         RemoveEntitiesPacket.packet_id: RemoveEntitiesPacket.decode,
         SetPlayerPositionPacket.packet_id: SetPlayerPositionPacket.decode,
+        SetPlayerPositionAndRotationPacket.packet_id: SetPlayerPositionAndRotationPacket.decode,
         UpdateEntityPositionPacket.packet_id: UpdateEntityPositionPacket.decode,
+        UpdateEntityPositionAndRotationPacket.packet_id: UpdateEntityPositionAndRotationPacket.decode,
         SetPlayerRotationPacket.packet_id: SetPlayerRotationPacket.decode,
     }
 
@@ -428,9 +497,7 @@ class MinecraftProxy:
         try:
             with socket.socket() as server:
                 server.connect((self.server_host, self.server_port))
-                print(
-                    f"[ + ] Connected to server -> {self.server_host}:{self.server_port}"
-                )
+                print(f"[ + ] Connected to server -> {self.server_host}:{self.server_port}")
 
                 c = threading.Thread(target=self.forward_client,
                                      args=(client, server),
@@ -490,6 +557,8 @@ class MinecraftProxy:
             pass
 
     def process_client_packet(self, packet: bytes):
+        global player_position
+        global player_camera
         try:
             _, offset = DataType.VarInt.decode(packet)
         except Exception as e:
@@ -512,11 +581,15 @@ class MinecraftProxy:
         try:
             pkt = PacketFactory.decode_packet(packet_payload)
             if isinstance(pkt, SetPlayerPositionPacket):
-                global player_position
-                player_position = (pkt.x, pkt.feet_y, pkt.z)
+                with state_lock:
+                    player_position = (pkt.x, pkt.feet_y, pkt.z)
             if isinstance(pkt, SetPlayerRotationPacket):
-                global player_camera
-                player_camera = (pkt.yaw, pkt.pitch)
+                with state_lock:
+                    player_camera = (pkt.yaw, pkt.pitch)
+            if isinstance(pkt, SetPlayerPositionAndRotationPacket):
+                with state_lock:
+                    player_position = (pkt.x, pkt.feet_y, pkt.z)
+                    player_camera = (pkt.yaw, pkt.pitch)
         except Exception as e:
             pass
 
@@ -572,15 +645,13 @@ class MinecraftProxy:
 
 def start_drawing():
     hwnd = create_fullscreen_window()
-    thread = threading.Thread(target=drawing_loop, args=(hwnd, ), daemon=True)
-    thread.start()
+    ctypes.windll.user32.SetTimer(hwnd, 1, 16, None)
     win32gui.PumpMessages()
-
 
 if __name__ == "__main__":
     LOCAL_HOST = "127.0.0.1"
     LOCAL_PORT = 25565
-    SERVER_HOST = "<target_server>"
+    SERVER_HOST = "<server_ip>"
     SERVER_PORT = 25565
 
     proxy_thread = threading.Thread(target=lambda: MinecraftProxy(
