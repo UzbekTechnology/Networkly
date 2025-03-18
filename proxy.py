@@ -51,33 +51,71 @@ def create_fullscreen_window():
 
 
 def world_to_screen(entity_pos, player_pos, cam_rot, fov):
-    ex, ey, ez = entity_pos
-    px, py, pz = player_pos
+    aspect = screen_width / screen_height
+    near = 0.1
+    far = 1000.0
+    fov_rad = math.radians(fov)
+    f_val = 1 / math.tan(fov_rad / 2)
+    projection_matrix = np.array([
+        [f_val / aspect, 0,           0,                           0],
+        [0,              f_val,       0,                           0],
+        [0,              0,           (far + near) / (near - far), (2 * far * near) / (near - far)],
+        [0,              0,          -1,                           0]
+    ])
+    
     yaw, pitch = map(math.radians, cam_rot)
-    fov = math.radians(fov)
-    adj_py = py + 1.62 if abs(py - ey) >= 0.5 and py > ey else (
-        py - 1.62 if abs(py - ey) >= 0.5 else py)
-    dx, dy, dz = ex - px, adj_py - ey, ez - pz
     cy, sy = math.cos(yaw), math.sin(yaw)
     cp, sp = math.cos(pitch), math.sin(pitch)
-    rx = dx * cy + dz * sy
-    rz = -dx * sy + dz * cy
-    fx = -rx
-    fy = -dy * cp + rz * sp
-    fz = dy * sp + rz * cp
-    if fz <= 0:
-        return None, None, None
-    tan_half = math.tan(fov / 2)
-    aspect = screen_width / screen_height
-    sx = fx / (fz * tan_half) * 0.5 + 0.5
-    sy_ = fy / (fz * tan_half * aspect) * 0.5 + 0.5
-    sx_px = int(sx * screen_width)
-    sy_px = int((1 - sy_) * screen_height)
-    nx, ny = sx * 2 - 1, sy_ * 2 - 1
-    nd = min(math.sqrt(nx * nx + ny * ny) / math.sqrt(2), 1.0)
-    size = min(4.5, 2 * (1 + nd * 8.0))
-    return sx_px, sy_px, size
+    
+    Rx = np.array([
+        [1,  0,   0, 0],
+        [0, cp, -sp, 0],
+        [0, -sp,  cp, 0],
+        [0,  0,   0, 1]
+    ])
+    Ry = np.array([
+        [ cy, 0, sy, 0],
+        [  0, 1,  0, 0],
+        [-sy, 0, cy, 0],
+        [  0, 0,  0, 1]
+    ])
+    rotation_matrix = Ry @ Rx
 
+    px, py, pz = player_pos
+    translation_matrix = np.array([
+        [1, 0, 0, -px],
+        [0, 1, 0, -py],
+        [0, 0, 1, -pz],
+        [0, 0, 0,   1]
+    ])
+    view_matrix = rotation_matrix @ translation_matrix
+    
+    ex, ey, ez = entity_pos
+    entity_homogeneous = np.array([ex, ey, ez, 1.0])
+    
+    view_coords = view_matrix @ entity_homogeneous
+    
+    if view_coords[2] <= 0:
+        return None, None, None
+    
+    clip_coords = projection_matrix @ view_coords
+    
+    if clip_coords[3] != 0:
+        ndc = clip_coords[:3] / clip_coords[3]
+    else:
+        return None, None, None
+    
+    sx = (ndc[0] + 1.0) * 0.5
+    sy = (ndc[1] + 1.0) * 0.5
+
+    
+    sx_px = int(sx * screen_width)
+    sy_px = int(sy * screen_height)  # Без инверсии
+
+    
+    distance = np.linalg.norm(np.array(entity_pos) - np.array(player_pos))
+    size = min(7.5, 30.0 / max(1.0, distance))
+    return sx_px, sy_px, size
 
 def draw_entities(hwnd):
     try:
