@@ -23,6 +23,6 @@ It's Unfinished!.
 
 
 ## Demonstration
-<video src='https://raw.githubusercontent.com/UzbekTechnology/Networkly/refs/heads/main/demo.mp4?token=GHSAT0AAAAAADAV3HYBKX74WZ5ORCGTQNTGZ6YYZQQ' width=560/>
+<video src='https://raw.githubusercontent.com/UzbekTechnology/Networkly/refs/heads/main/demo.mp4?token=GHSAT0AAAAAADAV3HYBKX74WZ5ORCGTQNTGZ6YYZQQ'/>
 
 
