@@ -63,7 +63,7 @@ def world_to_screen(entity_pos, player_pos, cam_rot, fov):
         [0,              0,          -1,                           0]
     ])
     
-    yaw, pitch = map(math.radians, cam_rot)
+    yaw, pitch = map(math.radians, (cam_rot[0], -cam_rot[1]))
     cy, sy = math.cos(yaw), math.sin(yaw)
     cp, sp = math.cos(pitch), math.sin(pitch)
     
@@ -79,7 +79,7 @@ def world_to_screen(entity_pos, player_pos, cam_rot, fov):
         [-sy, 0, cy, 0],
         [  0, 0,  0, 1]
     ])
-    rotation_matrix = Ry @ Rx
+    rotation_matrix = Rx @ Ry
 
     px, py, pz = player_pos
     translation_matrix = np.array([
@@ -110,7 +110,7 @@ def world_to_screen(entity_pos, player_pos, cam_rot, fov):
 
     
     sx_px = int(sx * screen_width)
-    sy_px = int(sy * screen_height)
+    sy_px = int(sy * screen_height)  # Без инверсии
 
     
     distance = np.linalg.norm(np.array(entity_pos) - np.array(player_pos))
