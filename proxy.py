@@ -110,7 +110,7 @@ def world_to_screen(entity_pos, player_pos, cam_rot, fov):
 
     
     sx_px = int(sx * screen_width)
-    sy_px = int(sy * screen_height)  # Без инверсии
+    sy_px = int(sy * screen_height)
 
     
     distance = np.linalg.norm(np.array(entity_pos) - np.array(player_pos))
@@ -316,10 +316,10 @@ class SpawnEntityPacket(Packet):
                    vx, vy, vz)
 
     def log(self):
-        print(f"[+] SpawnEntity: ID:{self.eid}, UUID:{self.uuid}, Тип:{self.etype}")
-        print(f"    Позиция: ({self.x}, {self.y}, {self.z})")
+        print(f"[+] SpawnEntity: ID:{self.eid}, UUID:{self.uuid}, Type:{self.etype}")
+        print(f"    Position: ({self.x}, {self.y}, {self.z})")
         print(
-            f"    Вращение: Pitch:{self.pitch:.2f}, Yaw:{self.yaw:.2f}, Head:{self.head_yaw:.2f}"
+            f"    Rotation: Pitch:{self.pitch:.2f}, Yaw:{self.yaw:.2f}, Head:{self.head_yaw:.2f}"
         )
         print(
             f"    Data: {self.data_field}, Скорость: ({self.vx}, {self.vy}, {self.vz})")
