@@ -70,7 +70,7 @@ def world_to_screen(entity_pos, player_pos, cam_rot, fov):
     Rx = np.array([
         [1,  0,   0, 0],
         [0, cp, -sp, 0],
-        [0, -sp,  cp, 0],
+        [0, sp,  cp, 0],
         [0,  0,   0, 1]
     ])
     Ry = np.array([
@@ -110,7 +110,7 @@ def world_to_screen(entity_pos, player_pos, cam_rot, fov):
 
     
     sx_px = int(sx * screen_width)
-    sy_px = int(sy * screen_height)  # Без инверсии
+    sy_px = int(sy * screen_height)
 
     
     distance = np.linalg.norm(np.array(entity_pos) - np.array(player_pos))
